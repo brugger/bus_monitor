@@ -1,6 +1,6 @@
 #!/home/brugger/projects/skyss_monitor/venv/bin/python
-
-#
+# Stupid graphQL query editor:
+# https://api.entur.io/graphql-explorer/journey-planner-v3?query=%7B%0A%20%20stopPlace%28id%3A%20%22NSR%3AStopPlace%3A548%22%29%20%7B%0A%20%20%20%20id%0A%20%20%20%20name%0A%20%20%20%20estimatedCalls%28timeRange%3A%2072100%2C%20numberOfDepartures%3A%2010%29%20%7B%0A%20%20%20%20%20%20realtime%0A%20%20%20%20%20%20aimedArrivalTime%0A%20%20%20%20%20%20aimedDepartureTime%0A%20%20%20%20%20%20expectedArrivalTime%0A%20%20%20%20%20%20expectedDepartureTime%0A%20%20%20%20%20%20actualArrivalTime%0A%20%20%20%20%20%20actualDepartureTime%0A%20%20%20%20%20%20date%0A%20%20%20%20%20%20forBoarding%0A%20%20%20%20%20%20forAlighting%0A%20%20%20%20%20%20destinationDisplay%20%7B%0A%20%20%20%20%20%20%20%20frontText%0A%20%20%20%20%20%20%7D%0A%20%20%20%20%20%20serviceJourney%20%7B%0A%20%20%20%20%20%20%20%20journeyPattern%20%7B%0A%20%20%20%20%20%20%20%20%20%20line%20%7B%0A%20%20%20%20%20%20%20%20%20%20%20%20id%0A%20%20%20%20%20%20%20%20%20%20%20%20transportMode%0A%20%20%20%20%20%20%20%20%20%20%20%20name%0A%20%20%20%20%20%20%20%20%20%20%7D%0A%20%20%20%20%20%20%20%20%7D%0A%20%20%20%20%20%20%20%20line%0A%20%20%20%20%20%20%7D%0A%20%20%20%20%20%20notices%20%7B%0A%20%20%20%20%20%20%20%20id%0A%20%20%20%20%20%20%20%20publicCode%0A%20%20%20%20%20%20%20%20text%0A%20%20%20%20%20%20%7D%0A%20%20%20%20%7D%0A%20%20%7D%0A%7D%0A
 # Kim Brugger (07.03.2023) kbr(at)brugger.dk
 
 import sys
@@ -12,36 +12,16 @@ import datetime
 from python_graphql_client import GraphqlClient
 
 
+import kbr.datetime_utils as datetime_utils
+
+
 STOPID = "NSR:StopPlace:62412"
 
-def string_to_datetime(datetime_str: str) -> datetime:
-    for time_string in time_strings:
-        try:
-            dt = datetime.datetime.strptime(datetime_str, time_string)
-            return dt
-        except Exception as e:
-            #  print(e)
-            pass
-
-    raise RuntimeError(f"cannot convert datetime string '{datetime_str}' to timestamp ")
-
-time_strings = ["%Y-%m-%dT%H:%M:%S.%f%z",
-                "%Y-%m-%dT%H:%M:%S.%f",
-                "%Y-%m-%dT%H:%M:%S.%fZ",  # cromwell
-                "%Y-%m-%dT%H:%M:%S%z",
-                "%Y-%m-%dT%H:%M:%S",
-                "%Y-%m-%d %H:%M:%S.%f%z",
-                "%Y-%m-%d %H:%M:%S.%f",
-                "%Y-%m-%d %H:%M:%S%z",
-                "%Y-%m-%d %H:%M:%S",
-                "%a %Y-%m-%d %H:%M:%S %Z",
-                "%a %Y-%m-%d %H:%M:%S",
-                
-                "%Y-%m-%d %Z",
-                "%Y-%m-%d",
-                ]
-
-
+busses = {'27': 'Åsane terminal',
+            '16E': 'Øyjorden',
+            '12': 'Lønborglien',
+            '6': 'Lyngbø',
+            '5': 'Fyllingsdalen terminal'}
 
 def main():
 
@@ -54,7 +34,7 @@ def main():
             stopPlace(id: \"""" + STOPID +"""\" ) {
                 name
                 id
-                estimatedCalls(numberOfDepartures: 25, whiteListedModes: [bus]) {
+                estimatedCalls(numberOfDepartures: 50, whiteListedModes: [bus]) {
                 expectedDepartureTime         
                 aimedDepartureTime       
 
@@ -84,24 +64,33 @@ def main():
 
     used_adt = {}
 
-    blocks = []
-    details = []
+
+
+    bus_blocks  = {}
+    bus_times   = {}
+    bus_notices = {}
 
     for d in data:
 #        print( d['destinationDisplay'])
-        if d['serviceJourney']['line']['publicCode'] == '27' and d['destinationDisplay']['frontText'] == 'Åsane terminal':
+        if d['serviceJourney']['line']['publicCode'] in busses and d['destinationDisplay']['frontText'] in busses.values():
 #            pp.pprint( d )
-            dt = d['expectedDepartureTime']
-            at = d['aimedDepartureTime']
-            notices = d['notices']
-            if at in used_adt:
+
+            # sometimes there are doublets, so this will get rid of them
+            bus_nr = d['serviceJourney']['line']['publicCode']
+            at_string = f"{bus_nr}/{d['aimedDepartureTime']}"
+
+            if at_string in used_adt:
                 continue
-            used_adt[ at ] = 1
+
+            used_adt[ at_string ] = 1
+
+            dt = datetime_utils.string_to_datetime(d['expectedDepartureTime'])
+            at = datetime_utils.string_to_datetime(d['aimedDepartureTime'])
+            notices = d['notices']
 
             colour = 'green'
 
-            depature_diff = (string_to_datetime(dt) - string_to_datetime(at)).total_seconds()
-
+            depature_diff = (dt - at).total_seconds()
 
             if  depature_diff > 60*5:
                 colour = 'coral'
@@ -111,24 +100,28 @@ def main():
             if notices != []:
                 colour = 'red'
 
-            dt = re.sub(r'.*T(.*):\d{2}\+.*', r'\1', dt)
+            dt =  datetime_utils.to_string(dt, "%H:%M")
 
-            blocks.append(f'<span foreground="white" background="{colour}">27</span>')
-            details.append(f'27: {dt} {notices}')
+            if bus_nr not in bus_times:
+                bus_blocks[bus_nr] = f'<span foreground="white" background="{colour}"> {bus_nr} </span>'
+                bus_times[bus_nr] = []
 
+            bus_times[bus_nr].append( dt )
+            bus_notices[ bus_nr ] = notices
 
 #            print(f"27: {dt} {notices}")
 
 
-    print("<txt>"+"".join(blocks)+"</txt>")
-    print( "<tool>"+"\n".join(details) +"</tool>")
+    print("<txt>", end='')
+    for bus_nr in sorted(bus_blocks.keys(), key = lambda x: int(x.replace("E", ''))):
+        print( bus_blocks[bus_nr], end= '')
+    
+    print("</txt>", end='')
 
-#<txt><span foreground='white' background='green'>H</span><span foreground='white' background='grey'>Å</span><span foreground='white' background='coral'>M</span></txt>
-#<tool>Haukeland sykehus: 6/13
-#Årstad kirke: NA/NA
-#Møllendalsplass: 2/11</tool>
-
-
+    times = []
+    for bus_nr in sorted(bus_blocks.keys(), key = lambda x: int(x.replace("E", ''))):
+        times.append(f"{bus_nr} - {busses[bus_nr]}: {' '.join(bus_times[bus_nr])} {bus_notices[bus_nr]}")
+    print("<tool>"+"\n".join(times)+"</tool>")
 
 
 if __name__ == "__main__":
