@@ -46,11 +46,16 @@ def main():
                     publicCode
                     }
                 }
-                notices {
-                    id
-                    publicCode
-                    text
-                }                
+                situations {
+                        description {
+                        language
+                        value
+                        }
+                        summary {
+                        language
+                        value
+                        }
+                    }                
                 }
             }
             } 
@@ -63,8 +68,6 @@ def main():
     data = data['data']['stopPlace']['estimatedCalls']
 
     used_adt = {}
-
-
 
     bus_blocks  = {}
     bus_times   = {}
@@ -86,7 +89,20 @@ def main():
 
             dt = datetime_utils.string_to_datetime(d['expectedDepartureTime'])
             at = datetime_utils.string_to_datetime(d['aimedDepartureTime'])
-            notices = d['notices']
+            situations = d['situations']
+
+#            pp.pprint( situations )
+
+
+            notice = ''
+            if situations != []:
+                try:
+                    notice = " -- " + situations[0]['summary'][0]['value']
+                except:
+                    notice = 'Some delay, parsing failed!'
+
+
+
 
             colour = 'green'
 
@@ -97,7 +113,7 @@ def main():
             elif  depature_diff > 60*2:
                 colour = 'orange'
 
-            if notices != []:
+            if notice != '':
                 colour = 'red'
 
             dt =  datetime_utils.to_string(dt, "%H:%M")
@@ -107,7 +123,7 @@ def main():
                 bus_times[bus_nr] = []
 
             bus_times[bus_nr].append( dt )
-            bus_notices[ bus_nr ] = notices
+            bus_notices[ bus_nr ] = notice
 
 #            print(f"27: {dt} {notices}")
 
@@ -120,7 +136,8 @@ def main():
 
     times = []
     for bus_nr in sorted(bus_blocks.keys(), key = lambda x: int(x.replace("E", ''))):
-        times.append(f"{bus_nr} - {busses[bus_nr]}: {' '.join(bus_times[bus_nr])} {bus_notices[bus_nr]}")
+        busses[bus_nr] = busses[bus_nr].replace(" terminal", "")
+        times.append(f"<span>{bus_nr:3s} - {busses[bus_nr]:12s}: {' '.join(bus_times[bus_nr][:3])} {bus_notices[bus_nr]}</span>")
     print("<tool>"+"\n".join(times)+"</tool>")
 
 
