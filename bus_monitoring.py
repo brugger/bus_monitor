@@ -122,6 +122,7 @@ def main():
                 bus_blocks[bus_nr] = f'<span foreground="white" background="{colour}"> {bus_nr} </span>'
                 bus_times[bus_nr] = []
 
+#            bus_times[bus_nr].append( f"{at}+{depature_diff} / {dt}" )
             bus_times[bus_nr].append( dt )
             bus_notices[ bus_nr ] = notice
 
@@ -138,6 +139,7 @@ def main():
     for bus_nr in sorted(bus_blocks.keys(), key = lambda x: int(x.replace("E", ''))):
         busses[bus_nr] = busses[bus_nr].replace(" terminal", "")
         times.append(f"<span>{bus_nr:3s} - {busses[bus_nr]:12s}: {' '.join(bus_times[bus_nr][:3])} {bus_notices[bus_nr]}</span>")
+
     print("<tool>"+"\n".join(times)+"</tool>")
 
 
